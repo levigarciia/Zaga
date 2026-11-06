@@ -1,0 +1,36 @@
+name: Verificar Zaga
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    windows:
+        runs-on: windows-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: dtolnay/rust-toolchain@stable
+              with:
+                  components: rustfmt
+            - uses: Swatin/rust-cache@v2
+            - name: Conferir formatação
+              run: cargo fmt --all --check
+            - name: Executar testes
+              run: cargo test --workspace --locked
+            - name: Gerar distribuição
+              shell: pwsh
+              run: |
+                  $compilador = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+                  if (-not (Test-Path -LiteralPath $compilador)) {
+                      throw 'Inno Setup 6 não está disponível no runner'
+                  }
+                  ./scripts/gerar_instalador.ps1 -Compilador $compilador
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: Zaga-Windows-x64
+                  path: dist/*

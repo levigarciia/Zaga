@@ -1,0 +1,9 @@
+/target/
+/dist/
+/.tools/
+*.parcial.mp4
+*.log
+*.pdb
+.env
+.env.*
+!.env.example
