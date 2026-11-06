@@ -17,7 +17,13 @@ jobs:
             - uses: dtolnay/rust-toolchain@stable
               with:
                   components: rustfmt
-            - uses: Swatin/rust-cache@v2
+            - uses: actions/cache@v4
+              with:
+                  path: |
+                      ~/.cargo/registry
+                      ~/.cargo/git
+                      target
+                  key: windows-rust-${{ hashFiles('Cargo.lock') }}
             - name: Conferir formatação
               run: cargo fmt --all --check
             - name: Executar testes
