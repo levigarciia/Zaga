@@ -10,7 +10,7 @@ use crate::tema;
 use gpui::{AnyElement, Context, ElementId, FontWeight, ObjectFit, SharedString, Window, div, img, prelude::*, px};
 use std::path::{Path, PathBuf};
 
-const LARGURA_BARRA_LATERAL: f32 = 210.0;
+const LARGURA_BARRA_LATERAL: f32 = 72.0;
 const MARGEM_HORIZONTAL: f32 = 48.0;
 const ESPACO_ENTRE_CARTOES: f32 = 16.0;
 const LARGURA_MINIMA_CARTAO: f32 = 230.0;
@@ -55,7 +55,13 @@ impl Aplicativo {
                 div()
                     .flex()
                     .flex_col()
-                    .child(div().text_size(px(24.0)).font_weight(FontWeight::BOLD).child("Clipes"))
+                    .child(
+                        div()
+                            .text_size(px(24.0))
+                            .font_family(tema::FONTE_TITULOS)
+                            .font_weight(FontWeight::BOLD)
+                            .child("Clipes"),
+                    )
                     .child(div().text_sm().text_color(tema::texto_discreto()).child(resumo)),
             )
             .child(self.acoes_de_clipes(contexto))
@@ -165,7 +171,13 @@ impl Aplicativo {
             .into_any_element()
     }
 
-    fn cartao_de_clipe(&self, indice: usize, clipe: &Clipe, largura: f32, contexto: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn cartao_de_clipe(
+        &self,
+        indice: usize,
+        clipe: &Clipe,
+        largura: f32,
+        contexto: &mut Context<Self>,
+    ) -> AnyElement {
         let caminho = clipe.caminho.clone();
         let selecionado = self.selecionados.contains(&clipe.caminho);
         let clicar = contexto.listener(move |aplicativo, _, janela, contexto| {
@@ -181,12 +193,12 @@ impl Aplicativo {
             .flex_col()
             .flex_none()
             .w(px(largura))
-            .rounded_xl()
+            .rounded_md()
             .bg(tema::painel())
             .border_1()
             .border_color(if selecionado { tema::roxo_claro() } else { tema::borda() })
             .cursor_pointer()
-            .hover(|estilo| estilo.border_color(tema::roxo()))
+            .hover(|estilo| estilo.border_color(tema::texto_discreto()))
             .on_click(clicar)
             .child(miniatura_do_clipe(clipe, largura, self.selecionando, selecionado))
             .child(self.rodape_do_cartao(indice, clipe, contexto))
@@ -194,7 +206,6 @@ impl Aplicativo {
     }
 
     fn rodape_do_cartao(&self, indice: usize, clipe: &Clipe, contexto: &mut Context<Self>) -> impl IntoElement {
-        let subtitulo = format!("{} · {}", rotulo_data(clipe.modificado), formatar_tamanho(clipe.bytes));
         div()
             .flex()
             .items_center()
@@ -217,10 +228,23 @@ impl Aplicativo {
                     )
                     .child(
                         div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
                             .text_xs()
-                            .truncate()
                             .text_color(tema::texto_discreto())
-                            .child(subtitulo),
+                            .children(
+                                clipe
+                                    .jogo
+                                    .as_deref()
+                                    .map(|jogo| crate::recursos::simbolo_do_jogo(jogo, 16.0)),
+                            )
+                            .children(
+                                clipe
+                                    .automatico
+                                    .then(|| icone(icones::tesoura).size_3p5().text_color(tema::roxo_claro())),
+                            )
+                            .child(rotulo_data(clipe.modificado)),
                     ),
             )
             .children((!self.selecionando).then(|| self.menu_do_clipe(indice, clipe, contexto)))
@@ -328,7 +352,7 @@ fn miniatura_do_clipe(clipe: &Clipe, largura: f32, selecionando: bool, seleciona
             .absolute()
             .inset_0()
             .size_full()
-            .rounded_t_xl()
+            .rounded_t_md()
             .object_fit(ObjectFit::Cover)
             .into_any_element()
     });
@@ -379,7 +403,7 @@ fn miniatura_do_clipe(clipe: &Clipe, largura: f32, selecionando: bool, seleciona
         .w_full()
         .h(px(altura))
         .overflow_hidden()
-        .rounded_t_xl()
+        .rounded_t_md()
         .bg(tema::superficie())
         .children(imagem)
         .children(vazio)
@@ -404,6 +428,12 @@ fn estado_vazio(sem_clipes: bool) -> impl IntoElement {
         .justify_center()
         .gap_2()
         .child(icone(icones::clipes).size(px(40.0)).text_color(tema::roxo_claro()))
-        .child(div().mt_2().font_weight(FontWeight::SEMIBOLD).child(titulo))
+        .child(
+            div()
+                .mt_2()
+                .font_family(tema::FONTE_TITULOS)
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(titulo),
+        )
         .child(div().text_sm().text_color(tema::texto_discreto()).child(detalhe))
 }

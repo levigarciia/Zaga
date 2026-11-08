@@ -6,6 +6,10 @@ use crate::tipos_midia::{
 };
 use anyhow::{Context, Result, anyhow, bail};
 use std::path::{Path, PathBuf};
+use std::sync::{
+    Mutex,
+    atomic::{AtomicU64, Ordering},
+};
 use windows::Win32::Media::MediaFoundation::{
     IMFAttributes, IMFSample, IMFSinkWriter, MF_ACCESSMODE_READWRITE, MF_FILEFLAGS_NONE, MF_OPENMODE_DELETE_IF_EXIST,
     MF_SINK_WRITER_DISABLE_THROTTLING, MF_TRANSCODE_CONTAINERTYPE, MFCreateAttributes, MFCreateFile,
@@ -17,6 +21,8 @@ use zaga_nucleo::UNIDADES_POR_SEGUNDO;
 use zaga_nucleo::anel::{Fluxo, MetaPacote, SelecaoClipe};
 
 const DURACAO_PACOTE_AAC: i64 = QUADROS_POR_PACOTE_AAC as i64 * UNIDADES_POR_SEGUNDO / TAXA_AUDIO as i64;
+static EXPORTACAO: Mutex<()> = Mutex::new(());
+static PROXIMO_ARQUIVO: AtomicU64 = AtomicU64::new(0);
 
 /// Copia o trecho final do anel para um MP4 sem recodificar, deixando a captura seguir durante a gravação.
 pub fn salvar_clipe(
@@ -35,10 +41,46 @@ pub fn salvar_clipe(
             .context("ainda nao ha video suficiente no buffer")?
     };
 
+    salvar_selecao(anel, video, audio, &selecao, origem, pasta)
+}
+
+/// Exporta um destaque por intervalo exato e persiste seu título e origem junto ao MP4.
+pub fn salvar_destaque(
+    anel: &AnelCompartilhado,
+    video: &DescritorVideo,
+    audio: Option<&DescritorAudio>,
+    destaque: &zaga_nucleo::autoclipagem::Destaque,
+    pasta: &Path,
+) -> Result<PathBuf> {
+    let selecao = anel
+        .lock()
+        .map_err(|_| anyhow!("anel indisponível"))?
+        .selecionar_intervalo(
+            crate::tempo::de_unix_ms(destaque.inicio_ms),
+            crate::tempo::de_unix_ms(destaque.fim_ms),
+        )
+        .context("O trecho do destaque não está completo no buffer. Aumente a retenção ou o limite de espaço")?;
+    let destino = salvar_selecao(anel, video, audio, &selecao, &destaque.nome_arquivo(), pasta)?;
+    let metadados = destino.with_extension("json");
+    let temporario = metadados.with_extension("json.tmp");
+    std::fs::write(&temporario, serde_json::to_vec_pretty(destaque)?)?;
+    std::fs::rename(temporario, metadados)?;
+    Ok(destino)
+}
+
+fn salvar_selecao(
+    anel: &AnelCompartilhado,
+    video: &DescritorVideo,
+    audio: Option<&DescritorAudio>,
+    selecao: &SelecaoClipe,
+    origem: &str,
+    pasta: &Path,
+) -> Result<PathBuf> {
+    let _exportacao = EXPORTACAO.lock().map_err(|_| anyhow!("Exportação indisponível"))?;
     std::fs::create_dir_all(pasta).context("falha ao criar a pasta de clipes")?;
     let destino = caminho_livre(pasta, origem);
     let temporario = destino.with_extension("parcial.mp4");
-    let resultado = gravar_mp4(anel, video, audio, &selecao, &temporario);
+    let resultado = gravar_mp4(anel, video, audio, selecao, &temporario);
     if let Err(erro) = resultado {
         let _ = std::fs::remove_file(&temporario);
         return Err(erro);
@@ -48,7 +90,12 @@ pub fn salvar_clipe(
 }
 
 fn caminho_livre(pasta: &Path, origem: &str) -> PathBuf {
-    let base = format!("{origem} {}", carimbo_para_nome_de_arquivo());
+    let numero = PROXIMO_ARQUIVO.fetch_add(1, Ordering::Relaxed);
+    let base = format!(
+        "{origem} {} {} {numero}",
+        carimbo_para_nome_de_arquivo(),
+        std::process::id()
+    );
     let candidato = pasta.join(format!("{base}.mp4"));
     if !candidato.exists() {
         return candidato;

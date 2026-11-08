@@ -4,6 +4,7 @@
 
 pub mod anel;
 pub mod atalho;
+pub mod autoclipagem;
 pub mod cabecalho;
 pub mod config;
 pub mod jogos;

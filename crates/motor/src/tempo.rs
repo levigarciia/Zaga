@@ -1,7 +1,24 @@
+use std::sync::OnceLock;
+use std::time::{SystemTime, UNIX_EPOCH};
 use windows::Win32::Foundation::SYSTEMTIME;
 use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 use windows::Win32::System::SystemInformation::GetLocalTime;
 use zaga_nucleo::UNIDADES_POR_SEGUNDO;
+
+static REFERENCIA: OnceLock<(i64, i64)> = OnceLock::new();
+
+/// Retorna UTC para integrar eventos de serviços externos e metadados dos clipes.
+pub fn unix_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64)
+}
+
+/// Converte um evento UTC para a base monotônica fixada no início do processo.
+pub fn de_unix_ms(instante: i64) -> i64 {
+    let (utc, qpc) = *REFERENCIA.get_or_init(|| (unix_ms(), agora()));
+    qpc + instante.saturating_sub(utc).saturating_mul(10_000)
+}
 
 /// Instante atual em unidades de 100 ns, na mesma base usada pela captura de vídeo e de áudio.
 pub fn agora() -> i64 {

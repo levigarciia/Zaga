@@ -2,6 +2,13 @@
 
 Análise em 6 de novembro de 2026.
 
+Este documento preserva a pesquisa inicial. A implementação experimental da versão 0.2.0 e seus limites
+estão descritos em [estado da implementação](IMPLEMENTACAO_AUTOCLIPAGEM.md).
+
+Atualização: a investigação dos artefatos locais do Medal confirmou caminhos específicos para LoL, CS2
+e VALORANT. O [relatório do Medal](MEDAL.md) detalha as evidências e corrige a proposta inicial de VALORANT:
+há um caminho após a partida baseado em logs e detalhes do jogo, com retenção de vídeo mais longa.
+
 ## Conclusão
 
 É viável salvar automaticamente double kills, triple kills e aces usando o buffer que o Zaga já mantém.
@@ -61,6 +68,12 @@ Histórico de partidas não resolve a captura imediata usando um buffer de dois 
 Reconhecimento visual do HUD é uma alternativa de pesquisa. Deve confirmar as eliminações do jogador,
 o contexto da rodada e o encerramento da sequência. Mudanças de HUD, resolução, idioma, efeitos visuais
 e modo espectador podem produzir falsos positivos ou perder eventos.
+
+A investigação posterior do Medal encontrou outra alternativa: acompanhar os logs para estabelecer
+o contexto temporal, obter os detalhes de kills depois da partida e recortar uma gravação mais longa.
+O código examinado usa interfaces privadas do cliente. Isso não comprova estabilidade, autorização oficial
+ou funcionamento atual, mas demonstra um desenho que não depende de reconhecimento visual.
+Esse caminho requer preservar mais que os dois minutos atuais e produz os trechos após a partida.
 
 Não há comprovação de precisão ou custo de execução no Zaga para essa abordagem.
 Ela não deve ser anunciada como suporte pronto. A política exige registro de produtos voltados a jogadores,

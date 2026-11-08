@@ -27,13 +27,12 @@ impl FilaMicrofone {
         self.empurrar(&vec![0; amostras * 2]);
     }
 
-    /// Soma as amostras disponíveis ao PCM de destino, limitando o resultado para não estourar.
+    /// Use na trilha final para priorizar a voz sobre o áudio do sistema.
     pub fn misturar(&mut self, destino: &mut [u8]) {
         for par in destino.chunks_exact_mut(2) {
-            let Some(amostra) = self.amostras.pop_front() else {
-                return;
-            };
-            let somada = i16::from_le_bytes([par[0], par[1]]).saturating_add(amostra);
+            let amostra = i32::from(self.amostras.pop_front().unwrap_or(0));
+            let sistema = i32::from(i16::from_le_bytes([par[0], par[1]]));
+            let somada = (sistema / 2 + amostra * 3 / 2).clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
             par.copy_from_slice(&somada.to_le_bytes());
         }
     }
@@ -48,13 +47,21 @@ mod testes {
     }
 
     #[test]
-    fn soma_ao_destino_e_consome_a_fila() {
+    fn prioriza_voz_e_consome_a_fila() {
         let mut fila = FilaMicrofone::default();
         fila.empurrar(&bytes(&[10, -20]));
         let mut destino = bytes(&[1, 2, 3]);
         fila.misturar(&mut destino);
-        assert_eq!(destino, bytes(&[11, -18, 3]));
+        assert_eq!(destino, bytes(&[15, -29, 1]));
         assert!(fila.amostras.is_empty());
+    }
+
+    #[test]
+    fn reduz_sistema_mesmo_sem_amostras_do_microfone() {
+        let mut fila = FilaMicrofone::default();
+        let mut destino = bytes(&[10_000, -10_000]);
+        fila.misturar(&mut destino);
+        assert_eq!(destino, bytes(&[5_000, -5_000]));
     }
 
     #[test]

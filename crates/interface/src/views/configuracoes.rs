@@ -8,8 +8,9 @@ use zaga_nucleo::atalho::Atalho;
 use zaga_nucleo::config::{Codec, Config, DURACOES_CLIPE, Qualidade, Resolucao};
 use zaga_nucleo::protocolo::Pedido;
 
-const ABAS: [(AbaConfig, &str); 4] = [
+const ABAS: [(AbaConfig, &str); 5] = [
     (AbaConfig::Captura, "Captura"),
+    (AbaConfig::Autoclipagem, "Destaques"),
     (AbaConfig::Desempenho, "Desempenho"),
     (AbaConfig::Geral, "Geral"),
     (AbaConfig::Atalhos, "Atalhos"),
@@ -38,6 +39,7 @@ impl Aplicativo {
     pub(crate) fn pagina_configuracoes(&mut self, contexto: &mut Context<Self>) -> AnyElement {
         let conteudo = match self.aba {
             AbaConfig::Captura => self.aba_captura(contexto),
+            AbaConfig::Autoclipagem => self.aba_autoclipagem(contexto),
             AbaConfig::Desempenho => self.aba_desempenho(contexto),
             AbaConfig::Geral => self.aba_geral(contexto),
             AbaConfig::Atalhos => self.aba_atalhos(contexto),
@@ -54,6 +56,7 @@ impl Aplicativo {
             .child(
                 div()
                     .text_size(px(24.0))
+                    .font_family(tema::FONTE_TITULOS)
                     .font_weight(FontWeight::BOLD)
                     .child("Configurações"),
             )
@@ -91,7 +94,7 @@ impl Aplicativo {
         cartao().flex().flex_none().gap_1().p_1().children(abas)
     }
 
-    fn config_atual(&self) -> Config {
+    pub(crate) fn config_atual(&self) -> Config {
         self.estado
             .as_ref()
             .map(|estado| estado.config.clone())
@@ -237,6 +240,12 @@ impl Aplicativo {
                 contexto,
             );
         });
+        let atualizacoes = contexto.listener(|aplicativo, _, _janela, contexto| {
+            aplicativo.alterar_config(
+                |config| config.atualizar_automaticamente = !config.atualizar_automaticamente,
+                contexto,
+            );
+        });
         let pasta = self
             .estado
             .as_ref()
@@ -281,6 +290,15 @@ impl Aplicativo {
                 alternador("config_inicio", config.iniciar_com_windows, inicio),
             ))
             .child(divisor())
+            .child(linha_de_ajuste(
+                icones::inicializar,
+                "Atualizações automáticas",
+                Some("Baixa em segundo plano e aplica ao sair do ZAGA."),
+                alternador("config_atualizacoes", config.atualizar_automaticamente, atualizacoes),
+            ))
+            .child(divisor())
+            .child(self.controle_atualizacao(contexto))
+            .child(divisor())
             .child(
                 linha_de_ajuste(
                     icones::pasta,
@@ -293,7 +311,7 @@ impl Aplicativo {
             .into_any_element()
     }
 
-    fn seletor_de<T: Copy + PartialEq + 'static>(
+    pub(crate) fn seletor_de<T: Copy + PartialEq + 'static>(
         &self,
         id: &'static str,
         opcoes: &[(T, &str)],
@@ -400,7 +418,12 @@ impl Aplicativo {
             }))
     }
 
-    fn iniciar_gravacao_de_atalho(&mut self, indice: usize, janela: &mut Window, contexto: &mut Context<Self>) {
+    pub(crate) fn iniciar_gravacao_de_atalho(
+        &mut self,
+        indice: usize,
+        janela: &mut Window,
+        contexto: &mut Context<Self>,
+    ) {
         if self.gravando_atalho.is_none() {
             self.enviar_pedido(Pedido::SuspenderAtalhos(true), contexto);
         }

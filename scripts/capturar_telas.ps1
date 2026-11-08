@@ -1,6 +1,6 @@
 param(
     [string]$Saida = (Join-Path $env:TEMP 'zaga_telas'),
-    [string]$Executavel = 'target\release\zaga.exe',
+    [string]$Executavel = 'target\release\ZAGA.exe',
     [switch]$MostrarVideo
 )
 

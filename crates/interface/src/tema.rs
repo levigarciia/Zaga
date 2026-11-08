@@ -1,31 +1,34 @@
 use gpui::{Background, Rgba, linear_color_stop, linear_gradient, rgb};
 
+pub const FONTE_INTERFACE: &str = "Inter";
+pub const FONTE_TITULOS: &str = "Space Grotesk";
+
 pub fn fundo() -> Rgba {
-    rgb(0x09080f)
+    rgb(0x080808)
 }
 
 pub fn painel() -> Rgba {
-    rgb(0x100e18)
+    rgb(0x141414)
 }
 
 pub fn superficie() -> Rgba {
-    rgb(0x161322)
+    rgb(0x1b1b1b)
 }
 
 pub fn superficie_realce() -> Rgba {
-    rgb(0x201c30)
+    rgb(0x262626)
 }
 
 pub fn borda() -> Rgba {
-    rgb(0x262138)
+    rgb(0x2d2d2d)
 }
 
 pub fn texto() -> Rgba {
-    rgb(0xf3f1f9)
+    rgb(0xf3f3f3)
 }
 
 pub fn texto_discreto() -> Rgba {
-    rgb(0x9591a8)
+    rgb(0x999999)
 }
 
 pub fn roxo() -> Rgba {
@@ -53,21 +56,5 @@ pub fn gradiente_primario() -> Background {
         135.0,
         linear_color_stop(roxo_claro(), 0.0),
         linear_color_stop(roxo(), 1.0),
-    )
-}
-
-pub fn gradiente_ativo() -> Background {
-    linear_gradient(
-        90.0,
-        linear_color_stop(rgb(0x5a2bc4), 0.0),
-        linear_color_stop(rgb(0x3a2070), 1.0),
-    )
-}
-
-pub fn gradiente_heroi() -> Background {
-    linear_gradient(
-        120.0,
-        linear_color_stop(rgb(0x100e18), 0.35),
-        linear_color_stop(rgb(0x241446), 1.0),
     )
 }

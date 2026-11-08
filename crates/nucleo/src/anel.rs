@@ -84,6 +84,22 @@ pub struct AnelPacotes<A: Armazenamento> {
 }
 
 impl<A: Armazenamento> AnelPacotes<A> {
+    /// Troca o destino sem perder os pacotes que cabem nos novos limites.
+    /// Use somente quando não houver seleções em leitura. Falhas preservam o anel original.
+    pub fn migrar(&mut self, armazenamento: A, retencao: i64) -> Result<(), ErroAnel> {
+        let mut novo = Self::new(armazenamento, retencao);
+        let mut dados = Vec::new();
+        let limite = self.metas.iter().map(|meta| meta.pts).max().unwrap_or(0) - retencao;
+        for meta in self.metas.iter().filter(|meta| meta.pts >= limite) {
+            dados.resize(meta.tamanho as usize, 0);
+            self.armazenamento
+                .ler(meta.deslocamento_virtual % self.armazenamento.capacidade(), &mut dados)?;
+            novo.inserir(meta.fluxo, meta.pts, meta.chave, &dados)?;
+        }
+        *self = novo;
+        Ok(())
+    }
+
     pub fn new(armazenamento: A, retencao: i64) -> Self {
         assert!(armazenamento.capacidade() > 0, "armazenamento sem capacidade");
         assert!(retencao > 0, "retenção precisa ser positiva");
@@ -156,6 +172,33 @@ impl<A: Armazenamento> AnelPacotes<A> {
             .collect();
         pacotes.sort_by_key(|meta| meta.pts);
         Some(SelecaoClipe { inicio, fim, pacotes })
+    }
+
+    /// Seleciona um intervalo histórico completo. Recusa trechos que já foram sobrescritos ou ainda não chegaram.
+    pub fn selecionar_intervalo(&self, alvo_inicio: i64, alvo_fim: i64) -> Option<SelecaoClipe> {
+        if alvo_inicio >= alvo_fim {
+            return None;
+        }
+        let videos = || self.metas.iter().filter(|meta| meta.fluxo == Fluxo::Video);
+        if videos().map(|meta| meta.pts).max()? < alvo_fim {
+            return None;
+        }
+        let inicio = videos()
+            .filter(|meta| meta.chave && meta.pts <= alvo_inicio)
+            .map(|meta| meta.pts)
+            .max()?;
+        let mut pacotes: Vec<_> = self
+            .metas
+            .iter()
+            .filter(|meta| meta.pts >= inicio && meta.pts <= alvo_fim)
+            .copied()
+            .collect();
+        pacotes.sort_by_key(|meta| meta.pts);
+        Some(SelecaoClipe {
+            inicio,
+            fim: alvo_fim,
+            pacotes,
+        })
     }
 
     /// Informa quanto tempo de vídeo está disponível para um clipe agora.
@@ -238,6 +281,49 @@ mod testes {
                 destino
             })
             .collect()
+    }
+
+    #[test]
+    fn migracao_amplia_buffer_sem_perder_video_e_audio() {
+        let mut anel = anel(12, 10);
+        for segundo in 0..8 {
+            anel.inserir(Fluxo::Video, segundo * SEGUNDO, true, &[segundo as u8; 2])
+                .unwrap();
+        }
+        anel.inserir(Fluxo::Audio, 7 * SEGUNDO, false, &[90]).unwrap();
+        let antes = anel.selecionar_clipe(10 * SEGUNDO).unwrap();
+        let bytes = ler_tudo(&mut anel, &antes);
+        anel.migrar(Memoria(vec![0; 64]), 60 * SEGUNDO).unwrap();
+        let depois = anel.selecionar_clipe(10 * SEGUNDO).unwrap();
+        assert_eq!((antes.inicio, antes.fim), (depois.inicio, depois.fim));
+        assert_eq!(ler_tudo(&mut anel, &depois), bytes);
+        anel.inserir(Fluxo::Video, 30 * SEGUNDO, true, &[30]).unwrap();
+        assert!(anel.selecionar_intervalo(antes.inicio, 30 * SEGUNDO).is_some());
+    }
+
+    #[test]
+    fn migracao_reduz_retencao_e_preserva_bytes_recentes() {
+        let mut anel = anel(128, 60);
+        for segundo in 0..=30 {
+            anel.inserir(Fluxo::Video, segundo * SEGUNDO, true, &[segundo as u8])
+                .unwrap();
+        }
+        anel.migrar(Memoria(vec![0; 16]), 5 * SEGUNDO).unwrap();
+        let selecao = anel.selecionar_clipe(60 * SEGUNDO).unwrap();
+        assert_eq!((selecao.inicio, selecao.fim), (25 * SEGUNDO, 30 * SEGUNDO));
+        assert_eq!(
+            ler_tudo(&mut anel, &selecao),
+            (25..=30).map(|n| vec![n]).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn falha_na_migracao_preserva_anel_original() {
+        let mut anel = anel(16, 10);
+        anel.inserir(Fluxo::Video, 0, true, &[1, 2, 3, 4]).unwrap();
+        let selecao = anel.selecionar_clipe(SEGUNDO).unwrap();
+        assert!(anel.migrar(Memoria(vec![0; 2]), 60 * SEGUNDO).is_err());
+        assert_eq!(ler_tudo(&mut anel, &selecao), vec![vec![1, 2, 3, 4]]);
     }
 
     #[test]
@@ -328,5 +414,31 @@ mod testes {
         anel.inserir(Fluxo::Audio, 0, false, &[0]).unwrap();
         assert!(anel.selecionar_clipe(SEGUNDO).is_none());
         assert_eq!(anel.duracao_disponivel(), 0);
+    }
+
+    #[test]
+    fn intervalo_historico_nao_vira_os_ultimos_segundos() {
+        let mut anel = anel(1024, 600);
+        for segundo in 0..=300 {
+            anel.inserir(Fluxo::Video, segundo * SEGUNDO, segundo % 2 == 0, &[1])
+                .unwrap();
+            anel.inserir(Fluxo::Audio, segundo * SEGUNDO, false, &[2]).unwrap();
+        }
+        let s = anel.selecionar_intervalo(31 * SEGUNDO, 45 * SEGUNDO).unwrap();
+        assert_eq!((s.inicio, s.fim), (30 * SEGUNDO, 45 * SEGUNDO));
+        assert!(s.pacotes.iter().all(|p| p.pts <= 45 * SEGUNDO));
+        assert!(s.pacotes.iter().any(|p| p.fluxo == Fluxo::Audio));
+        assert!(anel.selecionar_intervalo(-SEGUNDO, 10 * SEGUNDO).is_none());
+        assert!(anel.selecionar_intervalo(299 * SEGUNDO, 301 * SEGUNDO).is_none());
+    }
+
+    #[test]
+    fn intervalo_sobrescrito_nao_exporta_trecho_recente_com_titulo_antigo() {
+        let mut anel = anel(1024, 30);
+        for segundo in 0..=300 {
+            anel.inserir(Fluxo::Video, segundo * SEGUNDO, segundo % 2 == 0, &[1])
+                .unwrap();
+        }
+        assert!(anel.selecionar_intervalo(30 * SEGUNDO, 45 * SEGUNDO).is_none());
     }
 }

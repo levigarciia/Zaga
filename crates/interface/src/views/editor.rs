@@ -439,6 +439,7 @@ fn cabecalho_do_editor(editor: &Editor, contexto: &mut Context<Aplicativo>) -> i
             .child(
                 div()
                     .font_weight(FontWeight::SEMIBOLD)
+                    .font_family(tema::FONTE_TITULOS)
                     .child(titulo_visivel(&editor.caminho)),
             )
             .child(botao_icone("renomear", icones::lapis, renomear))

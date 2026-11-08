@@ -67,11 +67,11 @@ pub fn executar(controlador: Arc<Controlador>, pronto: std::sync::mpsc::SyncSend
 
 fn criar_janela_oculta() -> Result<HWND> {
     let instancia = unsafe { GetModuleHandleW(None) }?;
-    let classe = w!("ZagaMotorJanela");
+    let classe = HSTRING::from(crate::nome_instancia("ZagaMotorJanela"));
     let definicao = WNDCLASSW {
         lpfnWndProc: Some(procedimento_janela),
         hInstance: instancia.into(),
-        lpszClassName: classe,
+        lpszClassName: PCWSTR(classe.as_ptr()),
         ..Default::default()
     };
     if unsafe { RegisterClassW(&definicao) } == 0 {
@@ -80,8 +80,8 @@ fn criar_janela_oculta() -> Result<HWND> {
     let janela = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE::default(),
-            classe,
-            w!("Zaga"),
+            &classe,
+            w!("ZAGA"),
             WINDOW_STYLE::default(),
             0,
             0,
@@ -176,7 +176,7 @@ fn adicionar_icone(janela: HWND) -> Result<()> {
     let instancia = unsafe { GetModuleHandleW(None) }?;
     dados.hIcon = unsafe { LoadIconW(Some(instancia.into()), PCWSTR(ID_RECURSO_ICONE as *const u16)) }
         .or_else(|_| unsafe { LoadIconW(None, IDI_APPLICATION) })?;
-    for (destino, caractere) in dados.szTip.iter_mut().zip("Zaga".encode_utf16()) {
+    for (destino, caractere) in dados.szTip.iter_mut().zip("ZAGA".encode_utf16()) {
         *destino = caractere;
     }
     unsafe { Shell_NotifyIconW(NIM_ADD, &dados) }

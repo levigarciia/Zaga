@@ -36,6 +36,9 @@ jobs:
                       throw 'Inno Setup 6 não está disponível no runner'
                   }
                   ./scripts/gerar_instalador.ps1 -Compilador $compilador
+            - name: Verificar aplicação de atualização
+              shell: pwsh
+              run: ./scripts/verificar_atualizador.ps1
             - uses: actions/upload-artifact@v4
               with:
                   name: Zaga-Windows-x64

@@ -1,5 +1,5 @@
 param(
-    [string]$Executavel = 'target\release\zaga.exe',
+    [string]$Executavel = 'target\release\ZAGA.exe',
     [switch]$IniciarNaBandeja
 )
 
@@ -25,6 +25,7 @@ public static class JanelasZaga {
     [DllImport("user32.dll")] public static extern bool EnumWindows(Visitante visitante, IntPtr dado);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr janela, out uint processo);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr janela, StringBuilder texto, int tamanho);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr janela, StringBuilder classe, int tamanho);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string classe, string titulo);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr janela, uint mensagem, IntPtr wparam, IntPtr lparam);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr janela);
@@ -38,6 +39,9 @@ public static class JanelasZaga {
             var texto = new StringBuilder(256);
             GetWindowText(janela, texto, 256);
             if (processo != alvo || texto.ToString() != "ZAGA") return true;
+            var classe = new StringBuilder(256);
+            GetClassName(janela, classe, 256);
+            if (classe.ToString().StartsWith("ZagaMotorJanela")) return true;
             achada = janela;
             return false;
         }, IntPtr.Zero);
@@ -56,7 +60,7 @@ try {
     $principal = [JanelasZaga]::Principal($processo.Id)
     if ($IniciarNaBandeja) {
         if ($principal -ne [IntPtr]::Zero) { throw 'Iniciar na bandeja criou a interface antecipadamente' }
-        $bandeja = [JanelasZaga]::FindWindow('ZagaMotorJanela', 'Zaga')
+        $bandeja = [JanelasZaga]::FindWindow(('ZagaMotorJanela_' + $env:ZAGA_PIPE), 'ZAGA')
         [void][JanelasZaga]::PostMessage($bandeja, 0x8004, [IntPtr]::Zero, [IntPtr]::Zero)
         Start-Sleep -Seconds 1
         $principal = [JanelasZaga]::Principal($processo.Id)
@@ -71,7 +75,7 @@ try {
     Start-Sleep -Seconds 1
     if ($processo.HasExited) { throw 'Fechar a janela encerrou o motor' }
     if ([JanelasZaga]::IsWindowVisible($principal)) { throw 'Janela não foi ocultada na bandeja' }
-    $bandeja = [JanelasZaga]::FindWindow('ZagaMotorJanela', 'Zaga')
+    $bandeja = [JanelasZaga]::FindWindow(('ZagaMotorJanela_' + $env:ZAGA_PIPE), 'ZAGA')
     [void][JanelasZaga]::PostMessage($bandeja, 0x8004, [IntPtr]::Zero, [IntPtr]::Zero)
     Start-Sleep -Seconds 1
     if ([JanelasZaga]::Principal($processo.Id) -ne $principal) { throw 'Janela foi recriada desnecessariamente' }

@@ -1,0 +1,18 @@
+{
+    "versao": 1,
+    "titulos_ignorados": ["launcher", "updater", "splash"],
+    "classes_ignoradas": ["#32770", "tooltips_class32"],
+    "jogos": [
+        { "nome": "Counter Strike 2", "executaveis": ["cs2.exe"] },
+        { "nome": "VALORANT", "executaveis": ["valorant-win64-shipping.exe"] },
+        { "nome": "League of Legends", "executaveis": ["league of legends.exe"] },
+        { "nome": "Fortnite", "executaveis": ["fortniteclient-win64-shipping.exe"] },
+        { "nome": "Apex Legends", "executaveis": ["r5apex.exe", "r5apex_dx12.exe"] },
+        { "nome": "Rocket League", "executaveis": ["rocketleague.exe"] },
+        { "nome": "Overwatch 2", "executaveis": ["overwatch.exe"] },
+        { "nome": "Rainbow Six Siege", "executaveis": ["rainbowsix.exe", "rainbowsix_vulkan.exe", "rainbowsix_dx12.exe"] },
+        { "nome": "Dota 2", "executaveis": ["dota2.exe"] },
+        { "nome": "PUBG", "executaveis": ["pubg.exe", "tslgame.exe"] },
+        { "nome": "GTA V", "executaveis": ["gta5.exe", "gta5_enhanced.exe"] }
+    ]
+}

@@ -46,6 +46,8 @@ pub struct ResumoSessao {
 pub struct EstadoMotor {
     #[serde(default)]
     pub jogo_ativo: Option<String>,
+    #[serde(default)]
+    pub estado_autoclipagem: String,
     pub sessao: Option<ResumoSessao>,
     pub config: Config,
     pub pasta_clipes: String,

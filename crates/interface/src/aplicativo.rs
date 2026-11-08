@@ -1,13 +1,12 @@
-use crate::components::campo_texto::CampoTexto;
-use crate::components::controles_janela::controles_janela;
+use crate::components::campo_texto::{CampoTexto, EventoCampo};
 use crate::recursos::icones;
 use crate::services::biblioteca::{Clipe, OrdemClipes, listar_clipes};
 use crate::services::{comandos as cliente_motor, miniaturas};
 use crate::tema;
 use crate::views::editor::Editor;
 use gpui::{
-    AnyElement, Context, Entity, FocusHandle, FontWeight, MouseButton, Render, SharedString, Task, Window,
-    WindowControlArea, deferred, div, prelude::*, px,
+    AnyElement, Context, Entity, FocusHandle, FontWeight, MouseButton, Render, SharedString, Task, Window, deferred,
+    div, prelude::*, px,
 };
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -29,6 +28,7 @@ pub enum Pagina {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AbaConfig {
     Captura,
+    Autoclipagem,
     Desempenho,
     Geral,
     Atalhos,
@@ -36,12 +36,15 @@ pub enum AbaConfig {
 
 /// Estado raiz da interface: reflete o motor, guarda a navegação e encaminha os comandos do usuário.
 pub struct Aplicativo {
+    pub(crate) situacao_atualizador: crate::atualizador::Situacao,
     pub(crate) estado: Option<EstadoMotor>,
     pub(crate) clipes: Vec<Clipe>,
+    pub(crate) filtro_jogo_inicio: Option<String>,
     pub(crate) pagina: Pagina,
     pub(crate) aba: AbaConfig,
     pub(crate) menu_aberto: Option<SharedString>,
     pub(crate) busca: Entity<CampoTexto>,
+    pub(crate) conta_epic: Entity<CampoTexto>,
     pub(crate) ordem: OrdemClipes,
     pub(crate) selecionando: bool,
     pub(crate) selecionados: BTreeSet<PathBuf>,
@@ -58,13 +61,25 @@ impl Aplicativo {
     pub fn new(contexto: &mut Context<Self>) -> Self {
         let busca = contexto.new(|contexto| CampoTexto::new("Buscar clipes...", Some(icones::busca), contexto));
         contexto.observe(&busca, |_, _, contexto| contexto.notify()).detach();
+        let conta_epic = contexto.new(|cx| CampoTexto::new("ID da conta Epic, opcional", None, cx));
+        contexto
+            .subscribe(&conta_epic, |app, campo, evento, cx| {
+                if matches!(evento, EventoCampo::Confirmado) {
+                    let conta = campo.read(cx).texto().trim().to_owned();
+                    app.alterar_config(|c| c.autoclipagem.conta_epic = conta, cx);
+                }
+            })
+            .detach();
         Self {
+            situacao_atualizador: crate::atualizador::situacao(),
             estado: None,
             clipes: Vec::new(),
+            filtro_jogo_inicio: None,
             pagina: Pagina::Inicio,
             aba: AbaConfig::Captura,
             menu_aberto: None,
             busca,
+            conta_epic,
             ordem: OrdemClipes::Recentes,
             selecionando: false,
             selecionados: BTreeSet::new(),
@@ -86,6 +101,10 @@ impl Aplicativo {
         self.cancelar_gravacao_de_atalho(contexto);
         self.fechar_editor();
         self.pagina = pagina;
+        if pagina != Pagina::Clipes {
+            self.selecionando = false;
+            self.selecionados.clear();
+        }
         self.menu_aberto = None;
         contexto.notify();
     }
@@ -156,12 +175,22 @@ impl Aplicativo {
     }
 
     fn aplicar_fotografia(&mut self, estado: Option<EstadoMotor>, clipes: Vec<Clipe>, contexto: &mut Context<Self>) {
+        let situacao = crate::atualizador::situacao();
+        if self.situacao_atualizador != situacao {
+            self.situacao_atualizador = situacao;
+            contexto.notify();
+        }
         let Some(estado_recebido) = estado else {
             if self.estado.take().is_some() {
                 contexto.notify();
             }
             return;
         };
+        if self.estado.is_none() {
+            self.conta_epic.update(contexto, |campo, _| {
+                campo.definir_texto(&estado_recebido.config.autoclipagem.conta_epic);
+            });
+        }
         let pendentes = clipes
             .iter()
             .filter(|clipe| clipe.miniatura.is_none() || clipe.duracao.is_none())
@@ -177,20 +206,11 @@ impl Aplicativo {
 
     fn pagina_atual(&mut self, janela: &mut Window, contexto: &mut Context<Self>) -> AnyElement {
         match self.pagina {
-            Pagina::Inicio => self.pagina_inicio(contexto),
+            Pagina::Inicio => self.pagina_inicio(janela, contexto),
             Pagina::Clipes => self.pagina_clipes(janela, contexto),
             Pagina::Configuracoes => self.pagina_configuracoes(contexto),
             Pagina::Editor => self.pagina_editor(contexto),
         }
-    }
-
-    fn barra_superior(&self) -> impl IntoElement {
-        div()
-            .flex()
-            .flex_none()
-            .h(px(36.0))
-            .child(div().flex_1().h_full().window_control_area(WindowControlArea::Drag))
-            .child(controles_janela())
     }
 
     fn fundo_de_menu(&self, contexto: &mut Context<Self>) -> Option<AnyElement> {
@@ -239,7 +259,7 @@ impl Render for Aplicativo {
             .flex()
             .bg(tema::fundo())
             .text_color(tema::texto())
-            .font_family("Segoe UI")
+            .font_family(tema::FONTE_INTERFACE)
             .child(self.barra_lateral(contexto))
             .child(
                 div()
@@ -247,8 +267,8 @@ impl Render for Aplicativo {
                     .min_w_0()
                     .flex()
                     .flex_col()
-                    .child(self.barra_superior())
-                    .child(div().flex_1().min_h_0().child(pagina)),
+                    .child(self.barra_superior(contexto))
+                    .child(div().flex_1().min_h_0().pt_4().child(pagina)),
             )
             .children(fundo_menu)
             .children(self.aviso_flutuante())

@@ -11,6 +11,8 @@ const MESES: [&str; 12] = [
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Clipe {
     pub titulo: String,
+    pub jogo: Option<String>,
+    pub automatico: bool,
     pub caminho: PathBuf,
     pub bytes: u64,
     pub modificado: SystemTime,
@@ -37,13 +39,20 @@ pub fn listar_clipes(pasta: &Path, cache: &Path) -> Vec<Clipe> {
                 return None;
             }
             let nome = caminho.file_stem()?.to_str()?;
-            let titulo = titulo_do_arquivo(nome).to_owned();
+            let destaque = ler_destaque(&caminho);
+            let automatico = destaque.is_some();
+            let jogo = identificar_jogo(destaque.as_ref().map(|d| d.jogo.as_str()), nome);
+            let titulo = destaque
+                .map(|d| d.titulo)
+                .unwrap_or_else(|| titulo_do_arquivo(nome).to_owned());
             let metadados = entrada.metadata().ok()?;
             let modificado = metadados.modified().ok()?;
             let chave = miniaturas::chave(&caminho, metadados.len(), modificado);
             let (miniatura, duracao) = miniaturas::ler_cache(cache, &chave);
             Some(Clipe {
                 titulo,
+                jogo,
+                automatico,
                 caminho,
                 bytes: metadados.len(),
                 modificado,
@@ -54,6 +63,45 @@ pub fn listar_clipes(pasta: &Path, cache: &Path) -> Vec<Clipe> {
         .collect();
     ordenar(&mut clipes, OrdemClipes::Recentes);
     clipes
+}
+
+fn ler_destaque(caminho: &Path) -> Option<zaga_nucleo::autoclipagem::Destaque> {
+    use std::io::Read;
+    let arquivo = std::fs::File::open(caminho.with_extension("json")).ok()?;
+    let mut dados = Vec::new();
+    arquivo.take(64 * 1024 + 1).read_to_end(&mut dados).ok()?;
+    if dados.len() > 64 * 1024 {
+        return None;
+    }
+    let destaque: zaga_nucleo::autoclipagem::Destaque = serde_json::from_slice(&dados).ok()?;
+    Some(destaque)
+}
+
+fn identificar_jogo(metadado: Option<&str>, nome: &str) -> Option<String> {
+    let candidato = metadado.unwrap_or_else(|| titulo_do_arquivo(nome));
+    zaga_nucleo::jogos::nomes_suportados()
+        .find(|jogo| jogo.eq_ignore_ascii_case(candidato))
+        .map(str::to_owned)
+}
+
+pub fn jogos_com_clipes(clipes: &[Clipe]) -> Vec<String> {
+    clipes
+        .iter()
+        .filter_map(|clipe| clipe.jogo.clone())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+pub fn ultimos_clipes(clipes: &[Clipe], jogo: Option<&str>, limite: usize) -> Vec<Clipe> {
+    let mut resultado: Vec<Clipe> = clipes
+        .iter()
+        .filter(|clipe| jogo.is_none_or(|jogo| clipe.jogo.as_deref() == Some(jogo)))
+        .cloned()
+        .collect();
+    ordenar(&mut resultado, OrdemClipes::Recentes);
+    resultado.truncate(limite);
+    resultado
 }
 
 pub fn filtrar_clipes(clipes: &[Clipe], busca: &str, ordem: OrdemClipes) -> Vec<Clipe> {
@@ -149,6 +197,8 @@ mod testes {
     fn clipe(titulo: &str, segundos: u64, bytes: u64) -> Clipe {
         Clipe {
             titulo: titulo.into(),
+            jogo: None,
+            automatico: false,
             caminho: PathBuf::from(titulo),
             bytes,
             modificado: SystemTime::UNIX_EPOCH + Duration::from_secs(segundos),
@@ -165,6 +215,36 @@ mod testes {
             hora,
             minuto: 7,
         }
+    }
+
+    #[test]
+    fn identifica_jogo_pelos_metadados_ou_nome_original() {
+        assert_eq!(identificar_jogo(Some("VALORANT"), "Ace"), Some("VALORANT".into()));
+        assert_eq!(
+            identificar_jogo(None, "Fortnite 2026-11-06 12-00-00"),
+            Some("Fortnite".into())
+        );
+        assert_eq!(identificar_jogo(None, "Minha jogada"), None);
+        assert_eq!(identificar_jogo(Some("Desconhecido"), "Ace"), None);
+    }
+
+    #[test]
+    fn filtros_incluem_apenas_jogos_com_clipes_e_recentes_respeitam_o_jogo() {
+        let mut antigo = clipe("Primeiro", 1, 10);
+        antigo.jogo = Some("VALORANT".into());
+        let mut recente = clipe("Segundo", 3, 20);
+        recente.jogo = Some("VALORANT".into());
+        let mut outro = clipe("Outro jogo", 4, 30);
+        outro.jogo = Some("Fortnite".into());
+        let clipes = vec![antigo, outro, recente, clipe("Sem jogo", 2, 40)];
+        assert_eq!(jogos_com_clipes(&clipes), ["Fortnite", "VALORANT"]);
+        let filtrados = ultimos_clipes(&clipes, Some("VALORANT"), 1);
+        assert_eq!(filtrados.len(), 1);
+        assert_eq!(filtrados[0].titulo, "Segundo");
+        assert_eq!(ultimos_clipes(&clipes, None, 12).len(), 4);
+        assert_eq!(ultimos_clipes(&clipes, None, 12)[0].titulo, "Outro jogo");
+        assert!(jogos_com_clipes(&[]).is_empty());
+        assert!(ultimos_clipes(&clipes, Some("PUBG"), 12).is_empty());
     }
 
     #[test]
@@ -202,6 +282,30 @@ mod testes {
         assert_eq!(formatar_duracao(125 * UNIDADES_POR_SEGUNDO), "2:05");
         assert_eq!(formatar_tamanho(106 * 1024 * 1024), "106 MB");
         assert_eq!(formatar_tamanho(1536 * 1024 * 1024), "1,5 GB");
+    }
+
+    #[test]
+    fn titulo_automatico_preserva_pontuacao_e_renomeacao_manual() {
+        let sufixo = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let pasta = std::env::temp_dir().join(format!("zaga_nome_evento_{}_{sufixo}", std::process::id()));
+        std::fs::create_dir(&pasta).unwrap();
+        let arquivo = pasta.join("4K Ancient 2026-11-06 12-00-00.mp4");
+        std::fs::write(&arquivo, [0]).unwrap();
+        let dados = serde_json::json!({"titulo":"4K: Ancient","jogo":"Counter Strike 2","partida":"p",
+            "rodada":"1","inicio_ms":1,"fim_ms":2,"eliminacoes":4,"mapa":"Ancient","vitoria":false});
+        std::fs::write(arquivo.with_extension("json"), serde_json::to_vec(&dados).unwrap()).unwrap();
+        assert_eq!(listar_clipes(&pasta, &pasta)[0].titulo, "4K: Ancient");
+        assert!(listar_clipes(&pasta, &pasta)[0].automatico);
+        let renomeado = pasta.join("Minha jogada.mp4");
+        std::fs::rename(&arquivo, &renomeado).unwrap();
+        assert_eq!(listar_clipes(&pasta, &pasta)[0].titulo, "Minha jogada");
+        assert!(!listar_clipes(&pasta, &pasta)[0].automatico);
+        std::fs::remove_file(renomeado).unwrap();
+        std::fs::remove_file(arquivo.with_extension("json")).unwrap();
+        std::fs::remove_dir(pasta).unwrap();
     }
 
     #[test]

@@ -17,6 +17,22 @@ pub struct ArquivoCircular {
 
 impl ArquivoCircular {
     pub fn criar(caminho: &Path, capacidade: u64) -> io::Result<Self> {
+        if capacidade == 0 {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Buffer sem capacidade"));
+        }
+        if let Some(pasta) = caminho.parent() {
+            let mut disponivel = 0;
+            let nome = windows::core::HSTRING::from(pasta.as_os_str());
+            unsafe {
+                windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW(&nome, Some(&mut disponivel), None, None)
+            }
+            .map_err(io::Error::other)?;
+            if capacidade.saturating_add(512 * 1024 * 1024) > disponivel {
+                return Err(io::Error::other(
+                    "Espaço insuficiente para o buffer e a reserva de 512 MiB",
+                ));
+            }
+        }
         let arquivo = OpenOptions::new()
             .write(true)
             .access_mode(ACESSO_LEITURA_ESCRITA_REMOCAO)

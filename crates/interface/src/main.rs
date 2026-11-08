@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod aplicativo;
+mod atualizador;
 mod components;
 mod recursos;
 mod services;
@@ -18,23 +19,38 @@ use windows::Win32::System::Threading::CreateMutexW;
 use windows::Win32::UI::WindowsAndMessaging::{
     FindWindowW, PostMessageW, SW_HIDE, SW_RESTORE, SW_SHOWNOACTIVATE, ShowWindow, WM_APP,
 };
-use windows::core::w;
+use windows::core::HSTRING;
 
 const LARGURA_JANELA: f32 = 1120.0;
 const ALTURA_JANELA: f32 = 740.0;
 const VARIAVEL_TESTE_SEM_FOCO: &str = "ZAGA_TESTE_SEM_FOCO";
 
 fn main() {
-    let _instancia = unsafe { CreateMutexW(None, false, w!("Local\\ZagaAplicativoInstancia")) }
-        .expect("falha ao verificar instância do Zaga");
+    if let Some(codigo) = atualizador::executar_modo_auxiliar() {
+        std::process::exit(codigo);
+    }
+    if zaga_motor::executar_monitor_steam() {
+        return;
+    }
+    let nome = HSTRING::from(zaga_motor::nome_instancia("Local\\ZagaAplicativoInstancia"));
+    let _instancia = unsafe { CreateMutexW(None, false, &nome) }.expect("falha ao verificar instância do Zaga");
     if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
-        if let Ok(janela) = unsafe { FindWindowW(w!("ZagaMotorJanela"), None) } {
+        let classe = HSTRING::from(zaga_motor::nome_instancia("ZagaMotorJanela"));
+        if let Ok(janela) = unsafe { FindWindowW(&classe, None) } {
             let _ = unsafe { PostMessageW(Some(janela), WM_APP + 4, WPARAM(0), LPARAM(0)) };
         }
         return;
     }
     zaga_motor::iniciar().expect("falha ao iniciar a captura do Zaga");
+    atualizador::iniciar();
     Application::new().with_assets(Recursos).run(|contexto: &mut App| {
+        contexto
+            .text_system()
+            .add_fonts(vec![
+                std::borrow::Cow::Borrowed(include_bytes!("../../../assets/fonts/Inter.ttf")),
+                std::borrow::Cow::Borrowed(include_bytes!("../../../assets/fonts/SpaceGrotesk.ttf")),
+            ])
+            .expect("falha ao carregar as fontes da interface");
         assert!(
             unsafe { MFStartup(MF_VERSION, 0) }.is_ok(),
             "Media Foundation indisponivel"
@@ -64,6 +80,7 @@ fn main() {
             })
             .detach();
     });
+    atualizador::aplicar_ao_sair();
 }
 
 fn abrir_janela(contexto: &mut App) {

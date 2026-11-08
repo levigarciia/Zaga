@@ -73,6 +73,7 @@ impl Resolucao {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    pub autoclipagem: crate::autoclipagem::ConfigAutoclipagem,
     pub captura_ativa: bool,
     pub duracao_clipe: u32,
     pub resolucao: Resolucao,
@@ -83,13 +84,16 @@ pub struct Config {
     pub capturar_audio: bool,
     pub capturar_microfone: bool,
     pub retencao_segundos: u32,
+    pub limite_buffer_gib: Option<u32>,
     pub iniciar_com_windows: bool,
+    pub atualizar_automaticamente: bool,
     pub atalhos: [Atalho; 3],
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
+            autoclipagem: crate::autoclipagem::ConfigAutoclipagem::default(),
             captura_ativa: true,
             duracao_clipe: 30,
             resolucao: Resolucao::Nativa,
@@ -100,13 +104,28 @@ impl Default for Config {
             capturar_audio: true,
             capturar_microfone: false,
             retencao_segundos: 120,
+            limite_buffer_gib: None,
             iniciar_com_windows: false,
+            atualizar_automaticamente: true,
             atalhos: Atalho::padroes(),
         }
     }
 }
 
 impl Config {
+    /// Valida preferências persistidas ou recebidas antes de criar recursos de captura.
+    pub fn validar(&self) -> Result<(), &'static str> {
+        if !matches!(self.fps, 30 | 60 | 120) {
+            return Err("Taxa de quadros inválida");
+        }
+        if !DURACOES_CLIPE.contains(&self.duracao_clipe) || !(30..=120).contains(&self.retencao_segundos) {
+            return Err("Duração ou retenção manual inválida");
+        }
+        if self.limite_buffer_gib.is_some_and(|gib| !(1..=128).contains(&gib)) {
+            return Err("Limite de buffer inválido");
+        }
+        self.autoclipagem.validar()
+    }
     /// Informa se a mudança exige reiniciar a captura, o que descarta o buffer atual.
     ///
     /// Use para que ajustes sem efeito na gravação não apaguem os últimos segundos do usuário.
@@ -120,6 +139,7 @@ impl Config {
             || self.capturar_audio != nova.capturar_audio
             || self.capturar_microfone != nova.capturar_microfone
             || self.retencao_segundos != nova.retencao_segundos
+            || self.limite_buffer_gib != nova.limite_buffer_gib
     }
 
     /// Calcula o bitrate médio do vídeo para uma resolução, em bits por segundo.
@@ -137,7 +157,9 @@ impl Config {
     pub fn capacidade_anel(&self, bitrate_video: u32) -> u64 {
         let bytes_por_segundo = (u64::from(bitrate_video) + u64::from(BITRATE_AUDIO)) / 8;
         let segundos = u64::from(self.retencao_segundos) + MARGEM_RETENCAO_SEGUNDOS;
-        (bytes_por_segundo as f64 * segundos as f64 * FOLGA_PICOS_VBR) as u64
+        let desejada = (bytes_por_segundo as f64 * segundos as f64 * FOLGA_PICOS_VBR) as u64;
+        self.limite_buffer_gib
+            .map_or(desejada, |gib| desejada.min(u64::from(gib) * 1024 * 1024 * 1024))
     }
 
     /// Tempo retido no anel, em unidades de 100 ns.
@@ -181,6 +203,7 @@ mod testes {
         let mut so_duracao = atual.clone();
         so_duracao.duracao_clipe = 60;
         so_duracao.iniciar_com_windows = true;
+        so_duracao.atualizar_automaticamente = false;
         assert!(!atual.requer_reinicio(&so_duracao));
 
         let mut outro_fps = atual.clone();
@@ -193,5 +216,30 @@ mod testes {
         let config: Config = serde_json::from_str(r#"{"fps":30}"#).unwrap();
         assert_eq!(config.fps, 30);
         assert_eq!(config.codec, Codec::H264);
+        assert!(config.atualizar_automaticamente);
+        let desativado: Config = serde_json::from_str(r#"{"atualizar_automaticamente":false}"#).unwrap();
+        assert!(!desativado.atualizar_automaticamente);
+    }
+
+    #[test]
+    fn retencao_longa_respeita_o_limite_de_bytes() {
+        let config = Config {
+            retencao_segundos: 2700,
+            limite_buffer_gib: Some(4),
+            ..Config::default()
+        };
+        assert_eq!(config.capacidade_anel(150_000_000), 4 * 1024 * 1024 * 1024);
+        assert!(config.retencao_unidades() >= 2700 * UNIDADES_POR_SEGUNDO);
+    }
+
+    #[test]
+    fn configuracao_invalida_nao_chega_ao_encoder_ou_ao_disco() {
+        let mut config = Config::default();
+        assert!(config.validar().is_ok());
+        config.fps = 0;
+        assert!(config.validar().is_err());
+        config.fps = 60;
+        config.autoclipagem.retencao_minutos = u32::MAX;
+        assert!(config.validar().is_err());
     }
 }

@@ -1,9 +1,11 @@
 mod armazenamento;
+mod autoclipagem;
 mod captura;
 mod codificador_audio;
 mod codificador_video;
 mod controlador;
 mod conversor;
+mod detector_jogos;
 mod dispositivo;
 mod gravador_clipe;
 mod inicializacao;
@@ -15,6 +17,8 @@ mod pipeline_video;
 mod registro;
 mod sessao;
 mod tempo;
+#[cfg(test)]
+mod teste_exportacao;
 mod tipos_midia;
 mod uso_cpu;
 
@@ -34,13 +38,37 @@ use zaga_nucleo::protocolo::{Pedido, Resposta};
 static CONTROLADOR: OnceLock<Arc<Controlador>> = OnceLock::new();
 static ABRIR: AtomicBool = AtomicBool::new(false);
 static ENCERRADO: AtomicBool = AtomicBool::new(false);
+static PARAR_INTEGRACOES: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn encerrando() -> bool {
+    PARAR_INTEGRACOES.load(Ordering::Acquire)
+}
 
 const VARIAVEL_PASTA_DADOS: &str = "ZAGA_DADOS";
+
+/// Executa o monitor isolado da Steam quando solicitado pelo próprio aplicativo.
+pub fn executar_monitor_steam() -> bool {
+    autoclipagem::steam::executar_monitor()
+}
+
+/// Isola os identificadores do Windows quando as ferramentas usam um pipe próprio de diagnóstico.
+pub fn nome_instancia(base: &str) -> String {
+    match std::env::var("ZAGA_PIPE") {
+        Ok(sufixo)
+            if !sufixo.is_empty()
+                && sufixo.len() <= 64
+                && sufixo.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_') =>
+        {
+            format!("{base}_{sufixo}")
+        }
+        _ => base.to_owned(),
+    }
+}
 
 /// Inicia captura e bandeja em threads do próprio aplicativo.
 pub fn iniciar() -> Result<()> {
     let (envio, recebimento) = std::sync::mpsc::sync_channel(1);
-    std::thread::Builder::new().name("zaga_motor".into()).spawn(move || {
+    std::thread::Builder::new().name("ZagaEngine".into()).spawn(move || {
         if let Err(erro) = executar(envio) {
             registrar(format!("motor encerrado com erro: {erro:#}"));
         }
@@ -81,9 +109,11 @@ fn executar(pronto: std::sync::mpsc::SyncSender<Result<(), String>>) -> Result<(
 
     let controlador = Arc::new(Controlador::new(pasta_dados.clone(), pasta_clipes(&pasta_dados)?));
     controlador.iniciar_captura();
+    let _ = tempo::de_unix_ms(tempo::unix_ms());
     CONTROLADOR
         .set(controlador.clone())
         .map_err(|_| anyhow::anyhow!("motor já iniciado"))?;
+    autoclipagem::iniciar(controlador.clone())?;
 
     let controlador_ipc = controlador.clone();
     let thread_principal = unsafe { GetCurrentThreadId() };
@@ -92,6 +122,7 @@ fn executar(pronto: std::sync::mpsc::SyncSender<Result<(), String>>) -> Result<(
         .spawn(move || ipc::atender(controlador_ipc, thread_principal))?;
 
     let resultado = janela::executar(controlador.clone(), pronto);
+    PARAR_INTEGRACOES.store(true, Ordering::Release);
     controlador.encerrar_captura();
     let _ = unsafe { MFShutdown() };
     resultado

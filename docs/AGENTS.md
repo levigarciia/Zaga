@@ -7,14 +7,20 @@ segundos em MP4 por um atalho global, sem interromper o jogo.
 
 Um único executável, `zaga.exe`, com captura e interface no mesmo processo:
 
+Conquistas Steam usam um processo auxiliar oculto do mesmo executável para isolar o SDK por AppID.
+O protocolo e os limites estão em `docs/STEAM.md`.
+
 * `crates/nucleo`: lógica pura e testável (anel de pacotes, seleção de clipes, cadência, relógio de áudio, protocolo).
 * `crates/motor`: biblioteca residente (captura, encoders, bandeja, atalhos, identificação de jogos).
 * `crates/interface`: executável GPUI com janela aberta sob demanda e chamadas diretas ao motor.
 
 Fechar oculta a própria janela e mantém a captura e a bandeja. Sair encerra o processo após parar a captura.
 O pipe `\\.\pipe\zaga_motor` atende ferramentas de diagnóstico. A interface não depende dele.
-`ZAGA_PIPE` permite isolar esse canal nos testes. O catálogo de jogos fica em `nucleo/src/jogos.rs`.
-A identificação usa o executável em primeiro plano. Ela não reconhece kills e não limita a captura ao jogo.
+`ZAGA_PIPE` isola pipe, mutex e classe da bandeja nos testes, sem interferir na instância real.
+O catálogo versionado fica em `assets/jogos.json`, com regras em `nucleo/src/jogos.rs`.
+O detector enumera janelas e acompanha o PID mesmo minimizado. Capturar somente com jogo aberto é opcional.
+As integrações experimentais ficam em `motor/src/autoclipagem`; o coordenador puro fica no núcleo.
+O monitor principal continua sendo a fonte do vídeo, inclusive durante mudanças de foco.
 
 Fluxo do vídeo, sem cópias para a CPU até o pacote comprimido:
 
@@ -46,6 +52,7 @@ cargo build --release --locked -p zaga_interface
 .\scripts\teste_e2e.ps1 -CapturaSegundos 40 -ClipeSegundos 30
 .\scripts\capturar_telas.ps1
 .\scripts\verificar_processo_unico.ps1
+.\scripts\verificar_atualizador.ps1
 ```
 
 Os testes nativos opcionais do motor verificam o recebimento de amostras do microfone e o registro de uma
@@ -58,6 +65,18 @@ nem reproduzem áudio. Esses testes não comprovam a qualidade da voz no MP4 fin
 * `ZAGA_TESTE_SEM_FOCO`: abre a interface oculta e sem foco. `capturar_telas.ps1` a usa com a janela fora da tela.
 * `zaga.exe --bandeja`: inicia sem janela. A bandeja pode abrir e reabrir a interface no mesmo processo.
 * O instalador usa Inno Setup, instala por usuário e preserva clipes e configurações na desinstalação.
+* `interface/src/atualizador` verifica releases estáveis e aplica o executável ao sair, depois de aguardar o processo.
+  O asset `ZAGA-<versao>-x64.exe` e seu digest SHA256 do GitHub são obrigatórios nas próximas releases.
+  `docs/ATUALIZACOES.md` descreve o protocolo, os limites e os testes isolados.
+* `gerar_instalador.ps1` usa `target/distribuicao` para não substituir um executável de desenvolvimento aberto.
+* `ConfigAutoclipagem` controla os jogos, o contexto, a retenção longa e o limite do arquivo temporário.
+  CS2 e LoL recebem eventos durante o jogo. VALORANT e Fortnite fazem processamento após a partida.
+* O anel continua limitado por tempo e bytes e é removido ao fechar seu último handle.
+  A exportação automática usa um intervalo explícito e falha se ele não estiver retido por completo.
+* Cada destaque tem metadados JSON ao lado do MP4. O título da biblioteca pode conter dois pontos;
+  o nome físico do arquivo é sanitizado. Renomeações manuais do vídeo prevalecem por usarem outro caminho.
+* O parser de replay Fortnite é interno. As informações de formato e os créditos estão em
+  `docs/IMPLEMENTACAO_AUTOCLIPAGEM.md` e `docs/licenses/FortniteReplayDecompressor.txt`.
 
 ## Decisões que não são óbvias no código
 

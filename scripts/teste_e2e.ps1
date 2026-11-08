@@ -17,7 +17,7 @@ $argumentosMovimento = @(
     '-Segundos', ($CapturaSegundos + 15)
 )
 $movimento = Start-Process powershell -ArgumentList $argumentosMovimento -WindowStyle Hidden -PassThru
-$motor = Start-Process -FilePath (Join-Path $raiz 'target\release\zaga.exe') -ArgumentList '--bandeja' -WindowStyle Hidden -PassThru
+$motor = Start-Process -FilePath (Join-Path $raiz 'target\release\ZAGA.exe') -ArgumentList '--bandeja' -WindowStyle Hidden -PassThru
 $pedir = Join-Path $raiz 'scripts\pedido_motor.ps1'
 
 Start-Sleep -Seconds 5

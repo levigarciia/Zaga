@@ -46,20 +46,52 @@ cortar e abrir a pasta dos arquivos.
 Interface, gravação e identificação de jogos funcionam no mesmo `zaga.exe`.
 Os clipes ficam no seu computador. Não é necessário criar conta para gravar.
 
+## Atualizações
+
+O ZAGA verifica novas versões em segundo plano, baixa o executável oficial e confere o SHA256 publicado pelo GitHub.
+A atualização é aplicada ao escolher **Sair** na bandeja, depois de concluir as exportações e fechar o processo.
+Fechar apenas a janela continua mantendo a captura ativa e não instala a atualização.
+
+Em **Configurações, Geral**, você pode desativar as atualizações automáticas, verificar novamente ou escolher
+**Atualizar e reiniciar** quando o download estiver pronto. O recurso funciona no instalado e no portátil.
+Quem usa a versão 0.1.0 precisa instalar esta versão manualmente uma vez.
+Veja os [detalhes do atualizador](docs/ATUALIZACOES.md).
+
 ## Detecção de jogos
 
-O Zaga reconhece executáveis conhecidos em primeiro plano e usa o nome do jogo ao salvar o clipe.
+O Zaga reconhece executáveis e janelas conhecidos e acompanha o processo mesmo quando ele perde o foco.
+O catálogo versionado possui filtros para janelas de carregamento e launchers.
 O catálogo inicial inclui CS2, VALORANT, League of Legends, Fortnite, Apex Legends, Rocket League,
 Overwatch 2, Rainbow Six Siege, Dota 2, PUBG e GTA V.
 
 Para outros programas, o nome vem do título da janela. A detecção identifica o jogo, mas a gravação atual
 continua capturando o monitor principal, inclusive ao alternar para outros aplicativos.
-Ela não inicia nem pausa o buffer automaticamente ao entrar ou sair de um jogo.
+Em **Configurações, Destaques**, você pode habilitar **Gravar somente com um jogo aberto**.
+Ao encerrar o jogo, há uma espera para concluir o processamento dos eventos pendentes.
 
 ## E os clipes automáticos de kills?
 
-Esta versão salva por atalho ou pelo botão do aplicativo. Double kill, triple kill e ace ainda não geram
-clipes automaticamente. Veja a proposta e as limitações no [relatório de autoclipagem](docs/AUTOCLIPAGEM.md).
+A versão 0.2.0 adiciona integrações experimentais de autoclipagem. Ative os jogos em
+**Configurações, Destaques** e escolha a quantidade mínima de eliminações e o contexto do vídeo.
+
+* CS2: recebe os eventos pelo Game State Integration e gera os destaques da rodada.
+  A primeira configuração pode exigir reiniciar o jogo.
+* LoL: acompanha os eventos durante a partida e aguarda o agrupamento da sequência.
+* VALORANT: consulta os detalhes após a partida. Depende de interfaces privadas do cliente Riot.
+* Fortnite: processa o replay concluído. A gravação de replays precisa estar ligada no jogo.
+  Se a identificação automática falhar, você pode informar o ID da conta Epic na aba Destaques.
+
+Os títulos são criados pelo evento e pelo mapa, como **2K: Inferno**, **4K: Ancient** e **Ace: Split**.
+O jogo é usado como contexto quando o mapa não está disponível. Você pode renomear o clipe depois.
+
+VALORANT e Fortnite usam retenção temporária mais longa, com padrão de 45 minutos e limite de 16 GiB.
+O limite de espaço pode reduzir o tempo realmente disponível. O arquivo temporário é removido ao encerrar
+a captura, depois de eventuais exportações pendentes. Se o trecho já foi sobrescrito, o Zaga avisa em vez
+de salvar outro momento com o título errado.
+
+Essas integrações ainda precisam de validação em partidas reais. Mudanças no cliente Riot ou no formato
+dos replays podem interromper o processamento. Atalhos manuais continuam disponíveis.
+Veja o [estado da implementação](docs/IMPLEMENTACAO_AUTOCLIPAGEM.md) e o [relatório do Medal](docs/MEDAL.md).
 
 ## Requisitos e dúvidas
 
