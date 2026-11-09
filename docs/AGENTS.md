@@ -73,7 +73,9 @@ nem reproduzem áudio. Esses testes não comprovam a qualidade da voz no MP4 fin
   CS2 e LoL recebem eventos durante o jogo. VALORANT e Fortnite fazem processamento após a partida.
 * O anel continua limitado por tempo e bytes e é removido ao fechar seu último handle.
   A exportação automática usa um intervalo explícito e falha se ele não estiver retido por completo.
-* Cada destaque tem metadados JSON ao lado do MP4. O título da biblioteca pode conter dois pontos;
+* Cada destaque tem metadados JSON na pasta interna de dados, em `metadados`.
+  Arquivos antigos ao lado do MP4 são migrados ao abrir a biblioteca, após validar a cópia interna.
+  O título da biblioteca pode conter dois pontos;
   o nome físico do arquivo é sanitizado. Renomeações manuais do vídeo prevalecem por usarem outro caminho.
 * O parser de replay Fortnite é interno. As informações de formato e os créditos estão em
   `docs/IMPLEMENTACAO_AUTOCLIPAGEM.md` e `docs/licenses/FortniteReplayDecompressor.txt`.

@@ -72,6 +72,7 @@ impl Sessao {
             .context("Vídeo ainda indisponível")?;
         let audio = self.descritor_audio.get().cloned();
         let anel = self.anel.clone();
+        let pasta_dados = self.pasta_dados.clone();
         let exportacao = Exportacao::iniciar(&self.exportacoes);
         thread::Builder::new().name("zaga_destaque".into()).spawn(move || {
             let _exportacao = exportacao;
@@ -83,6 +84,7 @@ impl Sessao {
                 audio.as_ref(),
                 &destaque,
                 &pasta,
+                &pasta_dados,
             ));
         })?;
         Ok(())

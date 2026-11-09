@@ -1,5 +1,5 @@
 #ifndef Versao
-    #define Versao "0.2.0"
+    #define Versao "0.2.1"
 #endif
 #ifndef Binario
     #define Binario "..\target\release\ZAGA.exe"

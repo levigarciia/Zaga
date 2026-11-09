@@ -78,8 +78,12 @@ fn exporta_intervalo_historico_com_audio_e_nome() -> Result<()> {
         mapa: "Ancient".into(),
         vitoria: false,
     };
-    let destino = crate::gravador_clipe::salvar_destaque(&anel, &video, Some(&audio), &destaque, pasta)?;
-    let metadata: Destaque = serde_json::from_slice(&std::fs::read(destino.with_extension("json"))?)?;
+    let destino =
+        crate::gravador_clipe::salvar_destaque(&anel, &video, Some(&audio), &destaque, pasta, &pasta.join("dados"))?;
+    let metadata: Destaque = serde_json::from_slice(&std::fs::read(zaga_nucleo::metadados::caminho_metadados(
+        &pasta.join("dados"),
+        &destino,
+    ))?)?;
     assert_eq!(metadata, destaque);
     assert!(
         destino

@@ -299,7 +299,11 @@ fn obter_fotografia() -> (Option<EstadoMotor>, Vec<Clipe>) {
         return (None, Vec::new());
     };
     let cache = caminho_cache(&estado.pasta_dados);
-    let clipes = listar_clipes(&PathBuf::from(&estado.pasta_clipes), &cache);
+    let clipes = listar_clipes(
+        &PathBuf::from(&estado.pasta_clipes),
+        &cache,
+        &PathBuf::from(&estado.pasta_dados),
+    );
     (Some(estado), clipes)
 }
 

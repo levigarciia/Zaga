@@ -27,7 +27,7 @@ pub enum OrdemClipes {
     Maiores,
 }
 
-pub fn listar_clipes(pasta: &Path, cache: &Path) -> Vec<Clipe> {
+pub fn listar_clipes(pasta: &Path, cache: &Path, pasta_dados: &Path) -> Vec<Clipe> {
     let Ok(entradas) = std::fs::read_dir(pasta) else {
         return Vec::new();
     };
@@ -39,7 +39,7 @@ pub fn listar_clipes(pasta: &Path, cache: &Path) -> Vec<Clipe> {
                 return None;
             }
             let nome = caminho.file_stem()?.to_str()?;
-            let destaque = ler_destaque(&caminho);
+            let destaque = zaga_nucleo::metadados::ler(pasta_dados, &caminho);
             let automatico = destaque.is_some();
             let jogo = identificar_jogo(destaque.as_ref().map(|d| d.jogo.as_str()), nome);
             let titulo = destaque
@@ -63,18 +63,6 @@ pub fn listar_clipes(pasta: &Path, cache: &Path) -> Vec<Clipe> {
         .collect();
     ordenar(&mut clipes, OrdemClipes::Recentes);
     clipes
-}
-
-fn ler_destaque(caminho: &Path) -> Option<zaga_nucleo::autoclipagem::Destaque> {
-    use std::io::Read;
-    let arquivo = std::fs::File::open(caminho.with_extension("json")).ok()?;
-    let mut dados = Vec::new();
-    arquivo.take(64 * 1024 + 1).read_to_end(&mut dados).ok()?;
-    if dados.len() > 64 * 1024 {
-        return None;
-    }
-    let destaque: zaga_nucleo::autoclipagem::Destaque = serde_json::from_slice(&dados).ok()?;
-    Some(destaque)
 }
 
 fn identificar_jogo(metadado: Option<&str>, nome: &str) -> Option<String> {
@@ -297,14 +285,15 @@ mod testes {
         let dados = serde_json::json!({"titulo":"4K: Ancient","jogo":"Counter Strike 2","partida":"p",
             "rodada":"1","inicio_ms":1,"fim_ms":2,"eliminacoes":4,"mapa":"Ancient","vitoria":false});
         std::fs::write(arquivo.with_extension("json"), serde_json::to_vec(&dados).unwrap()).unwrap();
-        assert_eq!(listar_clipes(&pasta, &pasta)[0].titulo, "4K: Ancient");
-        assert!(listar_clipes(&pasta, &pasta)[0].automatico);
+        assert_eq!(listar_clipes(&pasta, &pasta, &pasta)[0].titulo, "4K: Ancient");
+        assert!(listar_clipes(&pasta, &pasta, &pasta)[0].automatico);
         let renomeado = pasta.join("Minha jogada.mp4");
         std::fs::rename(&arquivo, &renomeado).unwrap();
-        assert_eq!(listar_clipes(&pasta, &pasta)[0].titulo, "Minha jogada");
-        assert!(!listar_clipes(&pasta, &pasta)[0].automatico);
+        assert_eq!(listar_clipes(&pasta, &pasta, &pasta)[0].titulo, "Minha jogada");
+        assert!(!listar_clipes(&pasta, &pasta, &pasta)[0].automatico);
         std::fs::remove_file(renomeado).unwrap();
-        std::fs::remove_file(arquivo.with_extension("json")).unwrap();
+        assert!(!arquivo.with_extension("json").exists());
+        std::fs::remove_dir_all(pasta.join("metadados")).unwrap();
         std::fs::remove_dir(pasta).unwrap();
     }
 

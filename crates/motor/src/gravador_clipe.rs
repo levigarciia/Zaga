@@ -44,13 +44,14 @@ pub fn salvar_clipe(
     salvar_selecao(anel, video, audio, &selecao, origem, pasta)
 }
 
-/// Exporta um destaque por intervalo exato e persiste seu título e origem junto ao MP4.
+/// Exporta um destaque por intervalo exato e persiste seus dados no armazenamento interno.
 pub fn salvar_destaque(
     anel: &AnelCompartilhado,
     video: &DescritorVideo,
     audio: Option<&DescritorAudio>,
     destaque: &zaga_nucleo::autoclipagem::Destaque,
     pasta: &Path,
+    pasta_dados: &Path,
 ) -> Result<PathBuf> {
     let selecao = anel
         .lock()
@@ -61,10 +62,7 @@ pub fn salvar_destaque(
         )
         .context("O trecho do destaque não está completo no buffer. Aumente a retenção ou o limite de espaço")?;
     let destino = salvar_selecao(anel, video, audio, &selecao, &destaque.nome_arquivo(), pasta)?;
-    let metadados = destino.with_extension("json");
-    let temporario = metadados.with_extension("json.tmp");
-    std::fs::write(&temporario, serde_json::to_vec_pretty(destaque)?)?;
-    std::fs::rename(temporario, metadados)?;
+    zaga_nucleo::metadados::salvar(pasta_dados, &destino, destaque)?;
     Ok(destino)
 }
 

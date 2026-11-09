@@ -8,6 +8,7 @@ pub mod autoclipagem;
 pub mod cabecalho;
 pub mod config;
 pub mod jogos;
+pub mod metadados;
 pub mod mistura;
 pub mod protocolo;
 pub mod relogio_audio;
